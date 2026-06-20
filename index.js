@@ -61,7 +61,6 @@ yargs(hideBin(process.argv))
         app.use(express.json());
 
         const mongoURI = process.env.MONGODB_URI;
-
         mongoose
         .connect(mongoURI)
         .then(()=> console.log("MongoDB connected!"))

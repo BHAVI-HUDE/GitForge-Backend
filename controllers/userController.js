@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const {MongoClient} = require("mongodb");
 const dotenv = require("dotenv");
 var ObjectId = require("mongodb").ObjectId;
-const { s3, S3_BUCKET } = require("../config/aws-config");
+const { supabase } = require("../config/storage");
 const Repository = require('../models/repo');
 
 
@@ -184,16 +184,24 @@ const uploadAvatar = async (req, res) => {
     const db = client.db("githubclone");
     const usersCollection = db.collection("users");
 
-    const s3Key = `avatars/${id}-${Date.now()}`;
+    const filePath = `avatars/${id}-${Date.now()}-${req.file.originalname}`;
 
-    await s3.upload({
-      Bucket: S3_BUCKET,
-      Key: s3Key,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype,
-    }).promise();
+    const { data, error } = await supabase.storage
+    .from("avatars")
+    .upload(filePath, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false,
+    });
 
-    const avatarUrl = `https://${S3_BUCKET}.s3.ap-south-1.amazonaws.com/${s3Key}`;
+    if (error) {
+    throw error;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+    .from("avatars")
+    .getPublicUrl(filePath);
+
+    const avatarUrl = publicUrlData.publicUrl;
 
     await usersCollection.updateOne(
       { _id: new ObjectId(id) },

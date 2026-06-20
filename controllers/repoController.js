@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Repository = require('../models/repo');
-const { s3, S3_BUCKET } = require("../config/aws-config");
+const { supabase } = require("../config/storage");
 
 async function createRepository(req, res){
     const {
@@ -113,9 +113,9 @@ async function fetchRepositoryForCurrentUser(req,res){
     const userId = req.params.userID;
     try{
         const repositories = await Repository.find({owner: userId});
-        if(!repositories || repositories.length == 0){
-            return res.status(404).json({error: "User Repositories not found!"})
-        }
+        // if(!repositories || repositories.length == 0){
+        //     return res.status(404).json({error: "User Repositories not found!"})
+        // }
         res.json({
             success: true,
             count : repositories.length,
@@ -357,22 +357,30 @@ const uploadFileToS3 = async (req, res) => {
       });
     }
 
-    const s3Key = `repos/${id}/${path ? path + "/" : ""}${fileName}`;
+    const filePath = `repos/${id}/${path ? path + "/" : ""}${fileName}`;
 
-    await s3
-      .upload({
-        Bucket: S3_BUCKET,
-        Key: s3Key,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype,
-      })
-      .promise();
+    const { data, error } = await supabase.storage
+      .from("repositories")
+      .upload(filePath, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false,
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+  .from("repositories")
+  .getPublicUrl(filePath);
+
+const fileUrl = publicUrlData.publicUrl;
 
     targetFolder.push({
       type: "file",
       name: fileName,
-      s3Key,
-      url: `https://${S3_BUCKET}.s3.ap-south-1.amazonaws.com/${s3Key}`,
+      filepath: filePath,
+      url: fileUrl,
       size: req.file.size,
       lastCommit: `Upload ${fileName}`,
       updatedAt: "just now",
