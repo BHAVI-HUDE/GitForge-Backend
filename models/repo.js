@@ -19,12 +19,6 @@ const fileSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Only for folders
-    children: {
-      type: [this],   // recursive structure
-      default: [],
-    },
-
     lastCommit: {
       type: String,
       default: "Initial commit",
@@ -37,6 +31,13 @@ const fileSchema = new mongoose.Schema(
   },
   { _id: false }
 );
+
+fileSchema.add({
+  children: {
+    type: [fileSchema],
+    default: [],
+  },
+});
 
 
 const repoSchema = new mongoose.Schema({
@@ -63,7 +64,7 @@ const repoSchema = new mongoose.Schema({
     },
 
     files: {
-        type: ["Files"],
+        type: [fileSchema],
         default: [],
     },
 

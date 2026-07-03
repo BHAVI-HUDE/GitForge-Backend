@@ -209,7 +209,7 @@ async function toggleVisibilityById(req, res){
 const addFile = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, content = "" } = req.body;
+    const { name, content = "", path = "" } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -227,19 +227,35 @@ const addFile = async (req, res) => {
       });
     }
 
-    // Prevent duplicate file names at root
-    const fileExists = repo.files.some(
-      (file) => file.name === name
+    // Find the current folder
+    const pathParts = path.split("/").filter(Boolean);
+
+    
+    const targetFolder = pathParts.length
+      ? traversePath(repo.files, pathParts)
+      : repo.files;
+
+
+    if (!targetFolder) {
+      return res.status(404).json({
+        success: false,
+        message: "Folder not found",
+      });
+    }
+
+    // Prevent duplicate names in current folder
+    const exists = targetFolder.some(
+      (item) => item.name === name
     );
 
-    if (fileExists) {
+    if (exists) {
       return res.status(400).json({
         success: false,
         message: "File already exists",
       });
     }
 
-    repo.files.push({
+    targetFolder.push({
       type: "file",
       name,
       content,
@@ -247,12 +263,19 @@ const addFile = async (req, res) => {
       updatedAt: "just now",
     });
 
+
+    repo.markModified("files");
+
     await repo.save();
+
+    const verifyRepo = await Repository.findById(id);
+
 
     res.status(201).json({
       success: true,
       repository: repo,
     });
+
   } catch (err) {
     res.status(500).json({
       success: false,
@@ -264,7 +287,7 @@ const addFile = async (req, res) => {
 const addFolder = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
+    const { name, path = "" } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -282,8 +305,20 @@ const addFolder = async (req, res) => {
       });
     }
 
-    // Prevent duplicate names at root (file or folder)
-    const exists = repo.files.some(
+    const pathParts = path.split("/").filter(Boolean);
+
+    const targetFolder = pathParts.length
+      ? traversePath(repo.files, pathParts)
+      : repo.files;
+
+    if (!targetFolder) {
+      return res.status(404).json({
+        success: false,
+        message: "Folder not found",
+      });
+    }
+
+    const exists = targetFolder.some(
       (item) => item.name === name
     );
 
@@ -294,7 +329,7 @@ const addFolder = async (req, res) => {
       });
     }
 
-    repo.files.push({
+    targetFolder.push({
       type: "folder",
       name,
       children: [],
@@ -302,12 +337,18 @@ const addFolder = async (req, res) => {
       updatedAt: "just now",
     });
 
+    repo.markModified("files");
+
     await repo.save();
+
+    const verifyRepo = await Repository.findById(id);
+
 
     res.status(201).json({
       success: true,
       repository: repo,
     });
+
   } catch (err) {
     res.status(500).json({
       success: false,
@@ -320,8 +361,6 @@ const uploadFileToS3 = async (req, res) => {
   try {
     const { id } = req.params;
     const { path = "" } = req.body;
-
-    console.log("UPLOAD PATH:", req.body.path);
 
 
     if (!req.file) {
@@ -429,12 +468,16 @@ const traversePath = (files, pathParts) => {
   let current = files;
 
   for (const part of pathParts) {
-    const folder = current.find(
-      (item) => item.type === "folder" && item.name === part
-    );
+
+    const folder = current.find((item) => {
+      return item.type === "folder" && item.name === part;
+    });
+
 
     if (!folder) return null;
+
     current = folder.children;
+
   }
 
   return current;
@@ -491,6 +534,7 @@ const browseRepository = async (req, res) => {
     if (!folderContents) {
       return res.status(404).json({ error: "Folder not found" });
     }
+
 
     res.json({
       success: true,
