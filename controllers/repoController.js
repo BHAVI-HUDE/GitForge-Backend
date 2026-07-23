@@ -655,6 +655,75 @@ function collectFilePaths(folder, paths = []) {
   return paths;
 }
 
+const updateFileContent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { path, content } = req.body;
+
+    if (!path || content === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "Path and content are required",
+      });
+    }
+
+    const repo = await Repository.findById(id);
+
+    if (!repo) {
+      return res.status(404).json({
+        success: false,
+        message: "Repository not found",
+      });
+    }
+
+    const parts = path.split("/").filter(Boolean);
+    const fileName = parts.pop();
+
+    const parent = traversePath(repo.files, parts) || repo.files;
+
+    const file = parent.find(
+      (item) => item.type === "file" && item.name === fileName
+    );
+
+    if (!file) {
+      return res.status(404).json({
+        success: false,
+        message: "File not found",
+      });
+    }
+
+    // Upload the new content to Supabase
+    const { error } = await supabase.storage
+      .from("repositories")
+      .upload(file.filepath, content, {
+        upsert: true,
+        contentType: "text/plain",
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    file.updatedAt = new Date();
+
+    await repo.save();
+
+    return res.json({
+      success: true,
+      message: "File updated successfully",
+    });
+
+  } catch (error) {
+    console.error("===== updateFileContent Error =====");
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 const deleteFile = async (req, res) => {
   try {
     const { id } = req.params;
@@ -828,6 +897,7 @@ module.exports = {
 
     browseRepository,
     getFileContent,
+    updateFileContent,
     deleteFile,
     deleteFolder
 };

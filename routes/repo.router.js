@@ -57,6 +57,8 @@ repoRouter.get(
   repoController.getFileContent
 );
 
+repoRouter.put("/:id/file", repoController.updateFileContent);
+
 // Delete file
 repoRouter.delete(
   "/:id/file/delete",
