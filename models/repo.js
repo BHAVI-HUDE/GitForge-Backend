@@ -1,106 +1,76 @@
 const mongoose = require("mongoose");
+const fileSchema = require("./fileSchema");
 
-const fileSchema = new mongoose.Schema(
-  {
-    type: {
-      type: String,
-      enum: ["file", "folder"],
-      required: true,
-    },
-
-    name: {
-      type: String,
-      required: true,
-    },
-
-    // Only for files
-    content: {
-      type: String,
-      default: "",
-    },
-
-    lastCommit: {
-      type: String,
-      default: "Initial commit",
-    },
-
-    updatedAt: {
-      type: String,
-      default: "just now",
-    },
+const repoSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    unique: true,
   },
-  { _id: false }
-);
 
-fileSchema.add({
-  children: {
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+
+  isPrivate: {
+    type: Boolean,
+    default: false,
+  },
+
+  description: {
+    type: String,
+    default: "",
+  },
+
+  // Repository file tree
+  files: {
     type: [fileSchema],
     default: [],
   },
-});
 
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
 
-const repoSchema = new mongoose.Schema({
-    name: {
-        type: String,
-        required: true,
-        unique: true,
+  // Branches (master, dev, feature/login, etc.)
+  branches: [
+    {
+      type: String,
+      default: ["master"],
     },
+  ],
 
-    owner: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
+  // Default branch
+  defaultBranch: {
+    type: String,
+    default: "master",
+  },
+
+  // Commit IDs
+  commits: [
+    {
+      type: String,
     },
+  ],
 
-    isPrivate: {
-        type: Boolean,
-        default: false,
+  // Repository issues
+  issues: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Issue",
     },
+  ],
 
-    description: {
-        type: String,
-        default: "",
+  // Repository collaborators
+  collaborators: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
-
-    files: {
-        type: [fileSchema],
-        default: [],
-    },
-
-
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
-     // Branches like master, dev, feature/login
-    branches: [{
-        type: String,
-        default: ["master"]
-    }],
-
-    // Current head commit of default branch
-    defaultBranch: {
-        type: String,
-        default: "master"
-    },
-
-    // All commit IDs that were pushed to this repo
-    commits: [{
-        type: String     // commitID (UUID generated locally)
-    }],
-
-    // Issues belonging to this repo
-    issues: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Issue"
-    }],
-
-    // Users who contributed
-    collaborators: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User"
-    }],
+  ],
 });
 
 module.exports = mongoose.model("Repo", repoSchema);

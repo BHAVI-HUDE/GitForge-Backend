@@ -1,40 +1,63 @@
-// const mongoose = require("mongoose");
-// const fileSchema = new mongoose.Schema(
-//   {
-//     type: {
-//       type: String,
-//       enum: ["file", "folder"],
-//       required: true,
-//     },
+const mongoose = require("mongoose");
 
-//     name: {
-//       type: String,
-//       required: true,
-//     },
+const fileSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["file", "folder"],
+      required: true,
+    },
 
-//     // Only for files
-//     content: {
-//       type: String,
-//       default: "",
-//     },
+    name: {
+      type: String,
+      required: true,
+    },
 
-//     // Only for folders
-//     children: {
-//       type: [this],   // recursive structure
-//       default: [],
-//     },
+    // File content (used for text/code files if needed)
+    content: {
+      type: String,
+      default: "",
+    },
 
-//     lastCommit: {
-//       type: String,
-//       default: "Initial commit",
-//     },
+    // Supabase Storage path
+    filepath: {
+      type: String,
+      default: "",
+    },
 
-//     updatedAt: {
-//       type: String,
-//       default: "just now",
-//     },
-//   },
-//   { _id: false }
-// );
+    // Public URL of the file
+    url: {
+      type: String,
+      default: "",
+    },
 
-// module.exports = mongoose.model("File", fileSchema);
+    // File size in bytes
+    size: {
+      type: Number,
+      default: 0,
+    },
+
+    lastCommit: {
+      type: String,
+      default: "Initial commit",
+    },
+
+    updatedAt: {
+      type: String,
+      default: "just now",
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+// Recursive schema for nested folders
+fileSchema.add({
+  children: {
+    type: [fileSchema],
+    default: [],
+  },
+});
+
+module.exports = fileSchema;

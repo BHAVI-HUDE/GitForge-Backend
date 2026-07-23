@@ -358,6 +358,11 @@ const addFolder = async (req, res) => {
 };
 
 const uploadFileToS3 = async (req, res) => {
+
+  console.log("uploadFileToS3 called");
+console.log("req.file:", req.file);
+console.log("req.body:", req.body);
+console.log("req.params:", req.params);
   try {
     const { id } = req.params;
     const { path = "" } = req.body;
@@ -432,12 +437,18 @@ const fileUrl = publicUrlData.publicUrl;
       repository: repo,
     });
   } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-};
+  console.error("===== uploadFileToS3 Error =====");
+  console.error(err);
+  console.error("Message:", err.message);
+  console.error("Stack:", err.stack);
+
+  return res.status(500).json({
+    success: false,
+    message: err.message,
+    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+  });
+}
+}
 
 
 const searchRepositories = async (req, res) => {
@@ -553,16 +564,24 @@ const getFileContent = async (req, res) => {
     const { path } = req.query;
 
     if (!path) {
-      return res.status(400).json({ error: "Path is required" });
+      return res.status(400).json({
+        success: false,
+        message: "Path is required",
+      });
     }
 
     const repo = await Repository.findById(id);
+
     if (!repo) {
-      return res.status(404).json({ error: "Repository not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Repository not found",
+      });
     }
 
     const parts = path.split("/").filter(Boolean);
     const fileName = parts.pop();
+
     const parent = traversePath(repo.files, parts) || repo.files;
 
     const file = parent.find(
@@ -570,20 +589,71 @@ const getFileContent = async (req, res) => {
     );
 
     if (!file) {
-      return res.status(404).json({ error: "File not found" });
+      return res.status(404).json({
+        success: false,
+        message: "File not found",
+      });
     }
 
-    res.json({
+    // Download file from Supabase Storage
+    console.log("Mongo file object:");
+console.log(file);
+console.log("filepath:", file.filepath);
+    const { data, error } = await supabase.storage
+      .from("repositories")
+      .download(file.filepath);
+
+    if (error) {
+      throw error;
+    }
+
+    // Convert Blob -> text
+    const content = await data.text();
+
+    return res.json({
       success: true,
-      name: file.name,
-      content: file.content || "",
-      url: file.url || null,
+      file: {
+        name: file.name,
+        path: path,
+        type: file.type,
+        extension: file.name.split(".").pop().toLowerCase(),
+        content,
+        url: file.url,
+        size: file.size,
+      },
     });
   } catch (error) {
-    console.log("File fetch error:", error);
-    res.status(500).json({ error: "Failed to fetch file" });
+    console.error("===== getFileContent Error =====");
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
+
+function collectFilePaths(folder, paths = []) {
+  if (!folder) return paths;
+
+  if (Array.isArray(folder)) {
+    folder.forEach((item) => collectFilePaths(item, paths));
+    return paths;
+  }
+
+  if (folder.type === "file") {
+    if (folder.filepath) {
+      paths.push(folder.filepath);
+    }
+    return paths;
+  }
+
+  if (folder.type === "folder" && folder.children) {
+    folder.children.forEach((child) => collectFilePaths(child, paths));
+  }
+
+  return paths;
+}
 
 const deleteFile = async (req, res) => {
   try {
@@ -595,12 +665,14 @@ const deleteFile = async (req, res) => {
     }
 
     const repo = await Repository.findById(id);
+
     if (!repo) {
       return res.status(404).json({ error: "Repository not found" });
     }
 
     const parts = path.split("/").filter(Boolean);
     const fileName = parts.pop();
+
     const parent = parts.length
       ? traversePath(repo.files, parts)
       : repo.files;
@@ -617,7 +689,27 @@ const deleteFile = async (req, res) => {
       return res.status(404).json({ error: "File not found" });
     }
 
+    const file = parent[index];
+
+    // Delete from Supabase Storage
+    if (file.filepath) {
+      const { error } = await supabase.storage
+        .from("repositories")
+        .remove([file.filepath]);
+
+      if (error) {
+        console.error("Supabase delete error:", error);
+
+        return res.status(500).json({
+          success: false,
+          error: "Failed to delete file from storage",
+        });
+      }
+    }
+
+    // Delete from MongoDB
     parent.splice(index, 1);
+
     await repo.save();
 
     res.json({
@@ -625,23 +717,33 @@ const deleteFile = async (req, res) => {
       message: "File deleted successfully",
     });
   } catch (error) {
-    console.log("Delete file error:", error);
-    res.status(500).json({ error: "Failed to delete file" });
+    console.error("Delete file error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete file",
+    });
   }
 };
-
 const deleteFolder = async (req, res) => {
   try {
     const { id } = req.params;
     const { path } = req.query;
 
     if (!path) {
-      return res.status(400).json({ error: "Path is required" });
+      return res.status(400).json({
+        success: false,
+        error: "Path is required",
+      });
     }
 
     const repo = await Repository.findById(id);
+
     if (!repo) {
-      return res.status(404).json({ error: "Repository not found" });
+      return res.status(404).json({
+        success: false,
+        error: "Repository not found",
+      });
     }
 
     const parts = path.split("/").filter(Boolean);
@@ -652,7 +754,10 @@ const deleteFolder = async (req, res) => {
       : repo.files;
 
     if (!parent) {
-      return res.status(404).json({ error: "Invalid path" });
+      return res.status(404).json({
+        success: false,
+        error: "Invalid path",
+      });
     }
 
     const index = parent.findIndex(
@@ -660,10 +765,34 @@ const deleteFolder = async (req, res) => {
     );
 
     if (index === -1) {
-      return res.status(404).json({ error: "Folder not found" });
+      return res.status(404).json({
+        success: false,
+        error: "Folder not found",
+      });
     }
 
-    // Recursive delete (Mongo handles it since children are embedded)
+    const folder = parent[index];
+
+    // Collect all file paths recursively
+    const filePaths = collectFilePaths(folder);
+
+    // Delete all files from Supabase Storage
+    if (filePaths.length > 0) {
+      const { error } = await supabase.storage
+        .from("repositories")
+        .remove(filePaths);
+
+      if (error) {
+        console.error("Supabase folder delete error:", error);
+
+        return res.status(500).json({
+          success: false,
+          error: "Failed to delete folder from storage",
+        });
+      }
+    }
+
+    // Remove folder from MongoDB
     parent.splice(index, 1);
 
     await repo.save();
@@ -673,12 +802,14 @@ const deleteFolder = async (req, res) => {
       message: "Folder deleted successfully",
     });
   } catch (error) {
-    console.log("Delete folder error:", error);
-    res.status(500).json({ error: "Failed to delete folder" });
+    console.error("Delete folder error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete folder",
+    });
   }
 };
-
-
 
 
 module.exports = {

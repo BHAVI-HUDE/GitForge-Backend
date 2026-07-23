@@ -15,6 +15,8 @@ const express = require('express');
 const {Server} = require('socket.io');
 const {router} = require("./routes/main.router");
 
+console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
+
 yargs(hideBin(process.argv))
     .command("start", "Starts a new server", {}, startServer)
     .command('init', "Initialize a new repository",{},initRepo)
